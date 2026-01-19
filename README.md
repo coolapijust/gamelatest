@@ -10,6 +10,8 @@ Game Latest 是一款专为 Steam 用户设计的桌面应用程序，提供便�
 - 批量下载游戏资源文件
 - 自动处理 DLC 内容
 - 支持创意工坊修复
+- **一键自动搜索并入库**
+- **可禁用 ZIP 仓库（默认开启）**
 
 ### 游戏搜索
 - 实时搜索 Steam 游戏名称
@@ -25,6 +27,7 @@ Game Latest 是一款专为 Steam 用户设计的桌面应用程序，提供便�
 - 自动检测 Steam 安装路径
 - 识别已安装的解锁工具类型
 - 支持自定义仓库配置
+- 支持 GitHub Personal Token 配置
 
 ## 技术特性
 
@@ -46,16 +49,35 @@ Game Latest 是一款专为 Steam 用户设计的桌面应用程序，提供便�
 
 ## 使用说明
 
+### 快速入门
+
 1. 启动程序后等待后端服务初始化
 2. 在首页查看 Steam 路径和解锁工具状态
-3. 使用入库功能搜索并下载游戏
-4. 可在设置中自定义仓库地址
+3. 进入入库页面，输入 AppID（如 223850）
+4. 选择"自动搜索所有仓库"（默认选项）
+5. 点击"🚀 开始入库"
+6. 等待下载完成
+
+### 手动选择仓库
+
+如果需要指定仓库：
+1. 输入 AppID
+2. 取消勾选"自动搜索所有仓库"
+3. 从仓库列表选择目标仓库
+4. 点击"🚀 开始入库"
+
+### 设置选项
+
+- **GitHub Token**: 在搜索 GitHub 仓库时提高 API 限制
+- **Steam 路径**: 自定义 Steam 安装目录
+- **ZIP 仓库**: 可选择禁用所有 ZIP 仓库（默认禁用，加速搜索）
 
 ## 系统要求
 
 - Windows 10/11
 - Python 3.13+ (开发环境)
 - 已安装 Steam 客户端
+- WebView2 运行时（Windows 10/11 自带）
 
 ## 开发技术栈
 
@@ -64,7 +86,35 @@ Game Latest 是一款专为 Steam 用户设计的桌面应用程序，提供便�
 - **桌面框架**: pywebview
 - **打包工具**: PyInstaller
 
+## 开发环境运行
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 运行程序
+python main.py
+```
+
+## 打包发布
+
+```bash
+# 安装 PyInstaller
+pip install pyinstaller
+
+# Release 版本（隐藏控制台）
+pyinstaller GameLatest.spec
+
+# Debug 版本（显示控制台）
+pyinstaller --noconfirm GameLatest_Debug.spec
+
+# 输出目录: dist/GameLatest/
+```
+
 ## 版本信息
 
 - 当前版本: 1.0.0
 - 许可证: MPL
+
+## 致谢
+- **pvzcsx** - https://github.com/pvzcxw/unlockgamesmanager

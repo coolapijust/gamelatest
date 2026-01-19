@@ -234,7 +234,8 @@ const UI = {
     return {
       repo: selected.dataset.repo || '',
       zip: selected.dataset.zip || '',
-      type: selected.dataset.type
+      type: selected.dataset.type || '',
+      repo_data: selected.dataset.repo_data || ''
     };
   },
 

@@ -43,10 +43,12 @@ const SettingsPage = {
     try {
       const token = this.container.querySelector('#github-token').value;
       const path = this.container.querySelector('#steam-path-input').value;
+      const disableZip = this.container.querySelector('#disable-zip-repos').checked;
 
       await Promise.all([
         API.Config.saveGitHubToken(token),
-        API.Config.saveSteamPath(path)
+        API.Config.saveSteamPath(path),
+        API.Config.saveDisableZipRepos(disableZip)
       ]);
 
       Logger.info('SettingsPage', '设置保存成功');
@@ -184,6 +186,12 @@ const SettingsPage = {
       <div class="settings-section">
         <h2>ZIP清单库</h2>
         <div class="form-group">
+          <label class="checkbox-item">
+            <input type="checkbox" id="disable-zip-repos">
+            <span>禁用所有ZIP仓库（内置 + 自定义）</span>
+          </label>
+        </div>
+        <div class="form-group">
           <div class="input-group" style="flex-wrap:wrap;">
             <input type="text" id="zip-repo-name" class="input" placeholder="显示名称" style="flex:1;min-width:120px;">
             <input type="text" id="zip-repo-url" class="input" placeholder="ZIP文件URL" style="flex:1;min-width:120px;">
@@ -201,9 +209,11 @@ const SettingsPage = {
     Logger.debug('SettingsPage', '填充设置', { keys: Object.keys(config) });
     const tokenInput = this.container.querySelector('#github-token');
     const pathInput = this.container.querySelector('#steam-path-input');
+    const disableZipInput = this.container.querySelector('#disable-zip-repos');
 
     if (tokenInput) tokenInput.value = config.Github_Personal_Token || '';
     if (pathInput) pathInput.value = config.Custom_Steam_Path || '';
+    if (disableZipInput) disableZipInput.checked = config.Disable_All_ZIP_Repos ?? true;
   },
 
   renderCustomRepos(repos) {

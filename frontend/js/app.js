@@ -13,6 +13,8 @@ async function init() {
     HelpPage.init();
     
     Logger.info('App', '应用初始化完成');
+    
+    API.Games.preload().catch(() => {});
   } catch (error) {
     Logger.error('App', '应用初始化失败', error);
     UI.showToast('应用初始化失败: ' + error.message, 'error');

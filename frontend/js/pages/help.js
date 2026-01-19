@@ -42,7 +42,7 @@ const HelpPage = {
         <h2>功能说明</h2>
         <div class="help-item">
           <h4>🎮 游戏入库</h4>
-          <p>支持通过AppID或游戏名称搜索游戏，选择清单库后一键入库游戏文件。</p>
+          <p>支持通过AppID搜索游戏，选择清单库后一键入库游戏文件。</p>
         </div>
         <div class="help-item">
           <h4>📁 文件管理</h4>
@@ -53,8 +53,8 @@ const HelpPage = {
           <p>配置GitHub Token、Steam路径和自定义清单库。</p>
         </div>
         <div class="help-item">
-          <h4>🔍 仓库搜索</h4>
-          <p>支持搜索GitHub上的游戏清单库，自动匹配游戏AppID。</p>
+          <h4>📌 依赖说明</h4>
+          <p>本项目需要搭配解锁工具使用：<a href="#" onclick="HelpPage.openUrl('https://www.steamtools.net/');return false;" style="color:var(--primary-color);text-decoration:underline;">SteamTools</a> 或 <a href="#" onclick="HelpPage.openUrl('https://github.com/clinlx/CN_GreenLumaGUI/');return false;" style="color:var(--primary-color);text-decoration:underline;">GreenLuma</a>。请先安装配置好解锁工具后再使用本软件。</p>
         </div>
       </div>
 
@@ -63,6 +63,10 @@ const HelpPage = {
         <div id="qa-content"></div>
       </div>
     `;
+  },
+
+  openUrl(url) {
+    window.open(url, '_blank');
   },
 
   renderQA(qaData) {
@@ -76,8 +80,8 @@ const HelpPage = {
         answer: '在GitHub设置的最底部开发者选项中找到"Personal access tokens"，点击"Generate new token"创建新令牌。'
       },
       'QA2': {
-        question: 'Force_Unlocker 是什么？',
-        answer: '强制指定解锁工具类型，可填入 "steamtools" 或 "greenluma" 来覆盖自动检测结果。'
+        question: '如何获取游戏的AppID？',
+        answer: 'AppID是Steam游戏的唯一标识符。可通过以下方式获取：1) Steam商店URL中的数字部分，如 https://store.steampowered.com/app/730/ 中的730；2) 使用SteamDB网站(https://steamdb.info/)搜索游戏；3) 在SteamTools或GreenLuma中查看游戏列表。'
       },
       'QA3': {
         question: '如何添加自定义清单库？',

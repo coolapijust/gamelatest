@@ -2,13 +2,32 @@ import json, re, shutil, zipfile, vdf
 from pathlib import Path
 from typing import Dict, List, Optional
 import httpx
+from datetime import datetime
+
+MODULE_ID = "InstallBackend"
+
+def _log(level: str, msg: str, extra: Dict = None):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    extra_str = f" | {extra}" if extra else ""
+    print(f"[{timestamp}] [{MODULE_ID}] [{level}] {msg}{extra_str}")
 
 class InstallBackend:
     def __init__(self, core):
         self.core = core
         self.client = httpx.AsyncClient(verify=False, timeout=60)
+        self.cancel_requested = False
 
     async def close(self): await self.client.aclose()
+
+    def request_cancel(self):
+        self.cancel_requested = True
+        print("[Install] 收到取消请求")
+
+    def check_cancel(self) -> bool:
+        return self.cancel_requested
+
+    def reset_cancel(self):
+        self.cancel_requested = False
 
     def _update_progress(self, current: int, total: int, step: str, message: str = "", appid: str = None):
         self.core.install_progress = {
@@ -34,6 +53,90 @@ class InstallBackend:
                 results.append({"repo": repo, **manifest})
                 print(f"[Install] 找到仓库: {repo}")
         print(f"[Install] 仓库搜索完成: 找到 {len(results)} 个仓库")
+        return results
+
+    async def search_all_repos_for_appid(self, appid: str) -> List[Dict]:
+        """自动搜索所有仓库（GitHub + ZIP），作为默认选项
+        
+        搜索范围:
+        - GitHub 仓库 (内置 + 自定义)
+        - ZIP 格式仓库 (printedwaste, cysaw, furcate, assiw, steamdatabase)
+        
+        不包含:
+        - 创意工坊（需要工坊 URL/ID，非 AppID）
+        - ZIP 仓库（当 "禁用所有ZIP仓库" 选项开启时）
+        """
+        _log("INFO", f"开始自动搜索仓库", {"appid": appid})
+        self._update_progress(0, 0, "search", f"正在自动搜索: {appid}", appid)
+        results = []
+        found_count = {"github": 0, "zip": 0}
+        
+        disable_zip = self.core.config.get("Disable_All_ZIP_Repos", True)
+        _log("INFO", f"ZIP仓库禁用状态", {"disable_all_zip": disable_zip})
+        
+        zip_repos = {
+            "printedwaste": "https://api.printedwaste.com/gfk/download/{appid}",
+            "cysaw": "https://cysaw.top/uploads/{appid}.zip",
+            "furcate": "https://furcate.eu/files/{appid}.zip",
+            "assiw": "https://assiw.cngames.site/qindan/{appid}.zip",
+            "steamdatabase": "https://steamdatabase.s3.eu-north-1.amazonaws.com/{appid}.zip",
+        }
+        
+        github_repos = self.core.get_all_repos()
+        
+        total_github = len(github_repos)
+        total_zip = 0 if disable_zip else len(zip_repos)
+        total = total_github + total_zip
+        
+        _log("INFO", f"仓库列表加载完成", {"github_count": total_github, "zip_count": total_zip, "appid": appid})
+        
+        for i, repo in enumerate(github_repos):
+            self._update_progress(i + 1, total, "search", f"搜索 GitHub [{i+1}/{total_github}]: {repo}", appid)
+            _log("DEBUG", f"搜索 GitHub 仓库", {"current": i+1, "total": total_github, "repo": repo, "appid": appid})
+            manifest = await self._get_github_manifest(appid, repo)
+            if manifest:
+                results.append({"repo": repo, "type": "github", **manifest})
+                found_count["github"] += 1
+                _log("INFO", f"找到 GitHub 仓库", {"repo": repo, "sha": manifest.get("sha", "")[:7], "appid": appid})
+        
+        if disable_zip:
+            _log("INFO", f"ZIP仓库已禁用，跳过搜索")
+        else:
+            zip_start_idx = total_github
+            for i, (name, url_template) in enumerate(zip_repos.items()):
+                idx = zip_start_idx + i + 1
+                url = url_template.format(appid=appid)
+                self._update_progress(idx, total, "search", f"搜索 ZIP [{i+1}/{total_zip}]: {name}", appid)
+                _log("DEBUG", f"检查 ZIP 仓库", {"current": i+1, "total": total_zip, "name": name, "url": url, "appid": appid})
+            
+            try:
+                resp = await self.client.head(url, timeout=15)
+                if resp.status_code == 200:
+                    results.append({
+                        "repo": f"zip:{name}",
+                        "zip_url": url,
+                        "source": name,
+                        "type": "zip",
+                        "update_date": None
+                    })
+                    found_count["zip"] += 1
+                    _log("INFO", f"找到 ZIP 仓库", {"name": name, "appid": appid})
+                else:
+                    _log("DEBUG", f"ZIP 仓库不存在", {"name": name, "status": resp.status_code, "appid": appid})
+            except Exception as e:
+                _log("WARNING", f"ZIP 仓库检查失败", {"name": name, "error": str(e), "appid": appid})
+        
+        _log("INFO", f"自动搜索完成", {"total_found": len(results), **found_count, "appid": appid})
+        
+        self.core.install_progress = {
+            "current": total,
+            "total": total,
+            "status": "completed",
+            "step": "search",
+            "message": f"搜索完成，找到 {len(results)} 个仓库",
+            "appid": appid
+        }
+        
         return results
 
     async def _get_github_manifest(self, appid: str, repo: str) -> Optional[Dict]:
@@ -86,6 +189,14 @@ class InstallBackend:
             self._update_progress(0, 0, "process", f"正在处理 {len(downloaded)} 个文件", appid)
             result = await self._process_downloaded_files(appid, downloaded, add_all_dlc, fix_workshop)
             print(f"[Install] 处理完成: {result}")
+            self.core.install_progress = {
+                "current": total,
+                "total": total,
+                "status": "completed",
+                "step": "download",
+                "message": f"入库成功: {len(downloaded)} 个文件",
+                "appid": appid
+            }
             return {"success": True, "message": result}
         except Exception as e:
             print(f"[Install] 下载异常: {e}")

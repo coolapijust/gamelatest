@@ -20,15 +20,20 @@ async function request(method, endpoint, data = null, timeout = DEFAULT_TIMEOUT)
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log(`[API] 请求超时: ${timeout}ms`);
-    controller.abort();
-  }, timeout);
+  let timeoutId = null;
+  
+  if (timeout && timeout > 0) {
+    timeoutId = setTimeout(() => {
+      console.log(`[API] 请求超时: ${timeout}ms`);
+      controller.abort();
+    }, timeout);
+  }
+  
   options.signal = controller.signal;
 
   try {
     const response = await fetch(url, options);
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
     
     const duration = Date.now() - startTime;
     Logger.info('API', `请求完成: ${endpoint}`, { 
@@ -51,7 +56,7 @@ async function request(method, endpoint, data = null, timeout = DEFAULT_TIMEOUT)
     return result;
 
   } catch (error) {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
     
     if (error.name === 'AbortError') {
       Logger.error('API', `请求超时: ${endpoint}`, { timeout });
@@ -85,20 +90,29 @@ API.Status = {
 API.Config = {
   update: (key, value) => API.post('/config', { key, value }),
   saveGitHubToken: (token) => API.Config.update('Github_Personal_Token', token),
-  saveSteamPath: (path) => API.Config.update('Custom_Steam_Path', path)
+  saveSteamPath: (path) => API.Config.update('Custom_Steam_Path', path),
+  saveDisableZipRepos: (disabled) => API.Config.update('Disable_All_ZIP_Repos', disabled)
 };
 
 API.Games = {
   search: (name) => API.get(`/games/search/${encodeURIComponent(name)}`),
   getDetails: (appid) => API.get(`/games/${appid}`),
-  searchRepos: (appid) => API.get(`/repos/search/${appid}`),
+  searchAllRepos: (appid) => API.get(`/repos/search-all/${appid}`),
+  preload: () => API.post('/games/preload'),
   getManifest: (appid, repo) => API.get(`/manifest/${appid}?repo=${encodeURIComponent(repo)}`)
 };
 
 API.Install = {
-  game: (data) => API.post('/install', data, 120000),
+  game: (data) => API.post('/install', data, 0),
   getProgress: () => API.get('/install/progress'),
-  resetProgress: () => API.post('/install/reset-progress')
+  resetProgress: () => API.post('/install/reset-progress'),
+  cancel: () => API.post('/install/cancel'),
+  workshop: (workshopInput) => API.post('/install/workshop', { workshop_input: workshopInput }, 0),
+  printedwaste: (appid) => API.post(`/install/zip/printedwaste/${appid}`, null, 0),
+  cysaw: (appid) => API.post(`/install/zip/cysaw/${appid}`, null, 0),
+  furcate: (appid) => API.post(`/install/zip/furcate/${appid}`, null, 0),
+  assiw: (appid) => API.post(`/install/zip/assiw/${appid}`, null, 0),
+  steamdatabase: (appid) => API.post(`/install/zip/steamdatabase/${appid}`, null, 0)
 };
 
 API.Repos = {

@@ -9,8 +9,12 @@ import sys
 from pathlib import Path
 from backend_core import backend
 from install_backend import InstallBackend
+from zip_manifest import ZipManifestProcessor
+from workshop_manifest import WorkshopManifestProcessor
 
 install_backend = InstallBackend(backend)
+zip_processor = ZipManifestProcessor(backend)
+workshop_processor = WorkshopManifestProcessor(backend)
 
 app = FastAPI(title="Game Latest API", version="1.0.0")
 
@@ -47,7 +51,6 @@ class ZipRepoAdd(BaseModel):
 async def startup():
     backend.load_config()
     backend.load_game_names_cache()
-    asyncio.create_task(backend.preload_game_names())
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -99,6 +102,12 @@ async def get_install_progress():
 @app.post("/api/install/reset-progress")
 async def reset_install_progress():
     backend.install_progress = {"current": 0, "total": 0, "status": "idle", "step": "", "message": "", "appid": None}
+    install_backend.reset_cancel()
+    return {"success": True}
+
+@app.post("/api/install/cancel")
+async def cancel_install():
+    install_backend.request_cancel()
     return {"success": True}
 
 @app.get("/api/files")
@@ -154,10 +163,12 @@ async def search_games(name: str):
 
 @app.get("/api/games/{appid}")
 async def get_game_details(appid: str):
-    details = await backend.get_game_details(appid)
-    if not details:
-        raise HTTPException(status_code=404, detail="游戏未找到")
-    return details
+    return await backend.get_game_details(appid)
+
+@app.post("/api/games/preload")
+async def preload_game_names():
+    backend.preload_game_names()
+    return {"success": True, "message": "开始预加载"}
 
 @app.get("/api/manifest/{appid}")
 async def get_manifest(appid: str, repo: str):
@@ -166,9 +177,9 @@ async def get_manifest(appid: str, repo: str):
         raise HTTPException(status_code=404, detail="清单未找到")
     return manifest
 
-@app.get("/api/repos/search/{appid}")
-async def search_repos(appid: str):
-    results = await install_backend.search_repos_for_appid(appid)
+@app.get("/api/repos/search-all/{appid}")
+async def search_all_repos(appid: str):
+    results = await install_backend.search_all_repos_for_appid(appid)
     return {"results": results}
 
 class InstallRequest(BaseModel):
@@ -186,6 +197,10 @@ async def install_game(request: InstallRequest):
         if request.zip_url:
             result = await install_backend.download_zip_manifest(request.appid, request.zip_url, request.add_all_dlc, request.fix_workshop)
             source = "ZIP仓库"
+        elif request.repo.startswith("zip:"):
+            zip_name = request.repo[4:]
+            result = await install_backend.download_zip_manifest(request.appid, request.zip_url, request.add_all_dlc, request.fix_workshop)
+            source = f"ZIP仓库 ({zip_name})"
         elif request.repo:
             results = await install_backend.search_repos_for_appid(request.appid)
             target = next((r for r in results if r["repo"] == request.repo), None)
@@ -224,3 +239,51 @@ async def get_help_qa():
         "QA2": "Force_Unlocker: 强制指定解锁工具, 填入 'steamtools' 或 'greenluma'",
         "QA3": "Custom_Repos: 自定义清单库配置，github数组用于添加GitHub仓库"
     }
+
+@app.post("/api/install/workshop")
+async def install_workshop(workshop_input: str):
+    print(f"[Install] 创意工坊入库: {workshop_input}")
+    result = await workshop_processor.process_workshop(workshop_input)
+    if result:
+        return {"success": True, "message": f"已从创意工坊入库: {workshop_input}"}
+    raise HTTPException(status_code=500, detail="创意工坊入库失败")
+
+@app.post("/api/install/zip/printedwaste/{appid}")
+async def install_printedwaste(appid: str):
+    print(f"[Install] printedwaste ZIP入库: AppID={appid}")
+    result = await zip_processor.process_printedwaste(appid)
+    if result:
+        return {"success": True, "message": f"已从 printedwaste 入库 AppID {appid}"}
+    raise HTTPException(status_code=500, detail="printedwaste 入库失败")
+
+@app.post("/api/install/zip/cysaw/{appid}")
+async def install_cysaw(appid: str):
+    print(f"[Install] cysaw ZIP入库: AppID={appid}")
+    result = await zip_processor.process_cysaw(appid)
+    if result:
+        return {"success": True, "message": f"已从 cysaw 入库 AppID {appid}"}
+    raise HTTPException(status_code=500, detail="cysaw 入库失败")
+
+@app.post("/api/install/zip/furcate/{appid}")
+async def install_furcate(appid: str):
+    print(f"[Install] furcate ZIP入库: AppID={appid}")
+    result = await zip_processor.process_furcate(appid)
+    if result:
+        return {"success": True, "message": f"已从 furcate 入库 AppID {appid}"}
+    raise HTTPException(status_code=500, detail="furcate 入库失败")
+
+@app.post("/api/install/zip/assiw/{appid}")
+async def install_assiw(appid: str):
+    print(f"[Install] assiw ZIP入库: AppID={appid}")
+    result = await zip_processor.process_assiw(appid)
+    if result:
+        return {"success": True, "message": f"已从 assiw 入库 AppID {appid}"}
+    raise HTTPException(status_code=500, detail="assiw 入库失败")
+
+@app.post("/api/install/zip/steamdatabase/{appid}")
+async def install_steamdatabase(appid: str):
+    print(f"[Install] steamdatabase ZIP入库: AppID={appid}")
+    result = await zip_processor.process_steamdatabase(appid)
+    if result:
+        return {"success": True, "message": f"已从 steamdatabase 入库 AppID {appid}"}
+    raise HTTPException(status_code=500, detail="steamdatabase 入库失败")

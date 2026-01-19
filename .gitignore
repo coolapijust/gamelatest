@@ -25,5 +25,8 @@ Thumbs.db
 
 # Cache
 *.cache
-gamenames_cache.json
+
+# Project specific
 config.json
+gamenames_cache.json
+remake.md

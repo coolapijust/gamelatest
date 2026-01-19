@@ -16,7 +16,8 @@ else:
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 def run_server():
-    config = uvicorn.Config("api_server:app", host="127.0.0.1", port=API_PORT, log_level="warning")
+    import api_server
+    config = uvicorn.Config(app=api_server.app, host="127.0.0.1", port=API_PORT, log_level="warning")
     server = uvicorn.Server(config)
     server.run()
 
