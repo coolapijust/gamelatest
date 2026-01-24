@@ -1,4 +1,4 @@
-const FilesPage = {
+window.FilesPage = {
   container: null,
   files: [],
   gameNames: {},
@@ -22,18 +22,18 @@ const FilesPage = {
         API.Status.getFiles(),
         API.GameNames.getAll().catch(() => ({ game_names: {} }))
       ]);
-      
+
       this.files = filesResult.files || [];
       const backendGameNames = gameNamesResult.game_names || {};
-      
+
       Logger.info('FilesPage', '文件列表加载成功', { count: this.files.length });
       Logger.info('FilesPage', '后端游戏名缓存', { count: Object.keys(backendGameNames).length });
-      
+
       for (const [appid, name] of Object.entries(backendGameNames)) {
         State.setGameName(appid, name);
         this.gameNames[appid] = name;
       }
-      
+
       this.renderFileList(this.files);
       this.startProgressPolling();
     } catch (error) {
@@ -46,18 +46,18 @@ const FilesPage = {
     if (this.progressPolling) {
       clearInterval(this.progressPolling);
     }
-    
+
     const checkProgress = async () => {
       try {
         const progress = await API.GameNames.getProgress();
         Logger.debug('FilesPage', '进度', progress);
-        
+
         if (progress.status === 'loading' && progress.total > 0) {
           this.showProgressBar(progress);
           this.updateGameNamesFromProgress(progress);
         } else if (progress.status === 'completed') {
           this.hideProgressBar();
-          
+
           if (progress.total > 0) {
             const result = await API.GameNames.getAll();
             const gameNames = result.game_names || {};
@@ -69,7 +69,7 @@ const FilesPage = {
               }
             }
           }
-          
+
           clearInterval(this.progressPolling);
           this.progressPolling = null;
           Logger.info('FilesPage', '进度轮询结束');
@@ -78,17 +78,17 @@ const FilesPage = {
         Logger.warn('FilesPage', '获取进度失败', error.message);
       }
     };
-    
+
     checkProgress();
     this.progressPolling = setInterval(checkProgress, 500);
   },
 
   updateGameNamesFromProgress(progress) {
     if (!progress.last_appid) return;
-    
+
     const appid = progress.last_appid;
     if (this.gameNames[appid]) return;
-    
+
     this.loadSingleGameName(appid);
   },
 
@@ -116,9 +116,9 @@ const FilesPage = {
       progressEl.className = 'loading-progress';
       toolbar.appendChild(progressEl);
     }
-    
+
     const percent = Math.round((progress.current / progress.total) * 100);
-    
+
     progressEl.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;width:100%;">
         <span style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;">
@@ -185,7 +185,7 @@ const FilesPage = {
 
   filterFiles(query) {
     Logger.debug('FilesPage', '过滤文件列表', { query });
-    
+
     if (!query) {
       this.renderFileList(this.files);
       return;
@@ -194,13 +194,13 @@ const FilesPage = {
     const filtered = this.files.filter(file => {
       const cachedName = State.getGameName(file.appid);
       const gameName = this.gameNames[file.appid] || cachedName || '';
-      return gameName.toLowerCase().includes(query.toLowerCase()) || 
-             file.appid?.toLowerCase().includes(query.toLowerCase());
+      return gameName.toLowerCase().includes(query.toLowerCase()) ||
+        file.appid?.toLowerCase().includes(query.toLowerCase());
     });
-    
-    Logger.debug('FilesPage', '过滤结果', { 
-      total: this.files.length, 
-      filtered: filtered.length 
+
+    Logger.debug('FilesPage', '过滤结果', {
+      total: this.files.length,
+      filtered: filtered.length
     });
     this.renderFileList(filtered);
   },
@@ -283,7 +283,7 @@ const FilesPage = {
 
   attachEventListeners() {
     Logger.debug('FilesPage', '绑定事件监听器');
-    
+
     const fileSearch = this.container.querySelector('#file-search');
     if (fileSearch) {
       fileSearch.oninput = Utils.debounce((e) => {

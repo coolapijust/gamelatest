@@ -1,15 +1,15 @@
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => document.querySelectorAll(selector);
+window.$ = (selector) => document.querySelector(selector);
+window.$$ = (selector) => document.querySelectorAll(selector);
 
-const UI = {
+window.UI = {
   showToast(message, type = 'info') {
     Logger.info('UI', '显示提示', { message, type });
     const toast = $('#toast');
     if (!toast) return;
-    
+
     toast.textContent = message;
     toast.className = `toast ${type} show`;
-    
+
     setTimeout(() => {
       toast.classList.remove('show');
     }, 3000);
@@ -75,7 +75,7 @@ const UI = {
 
     container.innerHTML = '';
     const fragment = document.createDocumentFragment();
-    
+
     const allRepos = [
       ...(repos.builtin || []).map(r => ({
         name: r.split('/')[1] || r,

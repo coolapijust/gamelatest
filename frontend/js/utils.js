@@ -1,4 +1,4 @@
-const Logger = {
+window.Logger = {
   levels: {
     DEBUG: 0,
     INFO: 1,
@@ -55,7 +55,7 @@ const Logger = {
   }
 };
 
-const Validator = {
+window.Validator = {
   isNotEmpty(value) {
     return value !== null && value !== undefined && value !== '';
   },
@@ -99,7 +99,7 @@ const Validator = {
   }
 };
 
-const Formatter = {
+window.Formatter = {
   formatDate(date) {
     if (!date) return '-';
     const d = new Date(date);
@@ -128,7 +128,7 @@ const Formatter = {
   }
 };
 
-const Utils = {
+window.Utils = {
   debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -143,7 +143,7 @@ const Utils = {
 
   throttle(func, limit) {
     let inThrottle;
-    return function(...args) {
+    return function (...args) {
       if (!inThrottle) {
         func.apply(this, args);
         inThrottle = true;

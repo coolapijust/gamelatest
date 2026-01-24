@@ -1,4 +1,4 @@
-const Router = {
+window.Router = {
   routes: {
     home: { path: 'home', title: '首页', icon: '🏠' },
     install: { path: 'install', title: '游戏入库', icon: '🎮' },
@@ -11,7 +11,7 @@ const Router = {
 
   navigate(routeKey) {
     Logger.info('Router', '导航到页面', { from: this.currentRoute, to: routeKey });
-    
+
     if (!this.routes[routeKey]) {
       Logger.warn('Router', '无效的路由', { routeKey });
       return;
@@ -23,7 +23,7 @@ const Router = {
     this.updateURL(routeKey);
     this.updateNavigation(routeKey);
     this.transitionPage(fromRoute, routeKey);
-    
+
     State.setTab(routeKey);
   },
 
@@ -57,11 +57,11 @@ const Router = {
 
     if (fromPage && fromRoute !== toRoute) {
       fromPage.classList.add('page-exit');
-      
+
       setTimeout(() => {
         fromPage.classList.remove('active', 'page-exit');
         toPage.classList.add('active', 'page-enter');
-        
+
         setTimeout(() => {
           toPage.classList.remove('page-enter');
         }, 300);
@@ -76,7 +76,7 @@ const Router = {
 
   handleBrowserNavigation(event) {
     const hash = window.location.hash.replace('#', '');
-    const routeKey = Object.keys(this.routes).find(key => 
+    const routeKey = Object.keys(this.routes).find(key =>
       this.routes[key].path === hash
     );
 
@@ -88,7 +88,7 @@ const Router = {
 
   init() {
     Logger.info('Router', '初始化路由系统');
-    
+
     window.addEventListener('popstate', (event) => {
       if (event.state && event.state.route) {
         this.navigate(event.state.route);
@@ -106,9 +106,9 @@ const Router = {
       this.navigate('home');
     }
 
-    Logger.info('Router', '路由系统初始化完成', { 
+    Logger.info('Router', '路由系统初始化完成', {
       currentRoute: this.currentRoute,
-      hash: initialHash 
+      hash: initialHash
     });
   }
 };

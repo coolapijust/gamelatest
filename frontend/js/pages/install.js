@@ -1,4 +1,4 @@
-const InstallPage = {
+window.InstallPage = {
   container: null,
 
   init() {

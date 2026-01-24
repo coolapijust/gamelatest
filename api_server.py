@@ -9,11 +9,9 @@ import sys
 from pathlib import Path
 from backend_core import backend
 from install_backend import InstallBackend
-from zip_manifest import ZipManifestProcessor
 from workshop_manifest import WorkshopManifestProcessor
 
 install_backend = InstallBackend(backend)
-zip_processor = ZipManifestProcessor(backend)
 workshop_processor = WorkshopManifestProcessor(backend)
 
 app = FastAPI(title="Game Latest API", version="1.0.0")
@@ -31,9 +29,8 @@ if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
 else:
     BASE_DIR = Path(__file__).parent
 
-frontend_dir = BASE_DIR / "frontend"
-app.mount("/css", StaticFiles(directory=str(frontend_dir / "css")), name="css")
-app.mount("/js", StaticFiles(directory=str(frontend_dir / "js")), name="js")
+frontend_dir = BASE_DIR / "frontend" / "dist"
+app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
 
 class ConfigUpdate(BaseModel):
     key: str
@@ -42,10 +39,6 @@ class ConfigUpdate(BaseModel):
 class RepoAdd(BaseModel):
     name: str
     repo: str
-
-class ZipRepoAdd(BaseModel):
-    name: str
-    url: str
 
 @app.on_event("startup")
 async def startup():
@@ -118,28 +111,15 @@ async def get_files():
 async def get_repos():
     return {
         "builtin": backend.get_builtin_repos(),
-        "custom": backend.get_custom_repos(),
-        "zip": install_backend.get_zip_repos()
+        "custom": backend.get_custom_repos()
     }
 
 @app.post("/api/repos/add")
 async def add_repo(repo: RepoAdd):
-    custom = backend.config.setdefault("Custom_Repos", {"github": [], "zip": []})
+    custom = backend.config.setdefault("Custom_Repos", {"github": []})
     custom["github"].append({"name": repo.name, "repo": repo.repo})
     backend.save_config()
     return {"success": True}
-
-@app.post("/api/repos/zip/add")
-async def add_zip_repo(repo: ZipRepoAdd):
-    if install_backend.add_zip_repo(repo.name, repo.url):
-        return {"success": True}
-    raise HTTPException(status_code=500, detail="添加ZIP仓库失败")
-
-@app.delete("/api/repos/zip/{name}")
-async def remove_zip_repo(name: str):
-    if install_backend.remove_zip_repo(name):
-        return {"success": True}
-    raise HTTPException(status_code=500, detail="删除ZIP仓库失败")
 
 @app.delete("/api/repos/{name}")
 async def remove_repo(name: str):
@@ -185,23 +165,15 @@ async def search_all_repos(appid: str):
 class InstallRequest(BaseModel):
     appid: str
     repo: Optional[str] = ""
-    zip_url: Optional[str] = ""
     add_all_dlc: bool = False
     fix_workshop: bool = False
 
 @app.post("/api/install")
 async def install_game(request: InstallRequest):
-    print(f"[Install] 收到入库请求: AppID={request.appid}, Repo={request.repo or 'N/A'}, ZIP={request.zip_url or 'N/A'}")
+    print(f"[Install] 收到入库请求: AppID={request.appid}, Repo={request.repo or 'N/A'}")
     print(f"[Install] 选项: DLC={request.add_all_dlc}, Workshop={request.fix_workshop}")
     try:
-        if request.zip_url:
-            result = await install_backend.download_zip_manifest(request.appid, request.zip_url, request.add_all_dlc, request.fix_workshop)
-            source = "ZIP仓库"
-        elif request.repo.startswith("zip:"):
-            zip_name = request.repo[4:]
-            result = await install_backend.download_zip_manifest(request.appid, request.zip_url, request.add_all_dlc, request.fix_workshop)
-            source = f"ZIP仓库 ({zip_name})"
-        elif request.repo:
+        if request.repo:
             results = await install_backend.search_repos_for_appid(request.appid)
             target = next((r for r in results if r["repo"] == request.repo), None)
             if not target:
@@ -210,7 +182,7 @@ async def install_game(request: InstallRequest):
             result = await install_backend.download_from_github(request.appid, request.repo, target["sha"], files, request.add_all_dlc, request.fix_workshop)
             source = f"GitHub ({request.repo})"
         else:
-            raise HTTPException(status_code=400, detail="请指定仓库或ZIP URL")
+            raise HTTPException(status_code=400, detail="请指定仓库")
         
         if result.get("success"):
             return {"success": True, "message": f"已从 {source} 入库 AppID {request.appid}: {result.get('message', '')}"}
@@ -247,43 +219,3 @@ async def install_workshop(workshop_input: str):
     if result:
         return {"success": True, "message": f"已从创意工坊入库: {workshop_input}"}
     raise HTTPException(status_code=500, detail="创意工坊入库失败")
-
-@app.post("/api/install/zip/printedwaste/{appid}")
-async def install_printedwaste(appid: str):
-    print(f"[Install] printedwaste ZIP入库: AppID={appid}")
-    result = await zip_processor.process_printedwaste(appid)
-    if result:
-        return {"success": True, "message": f"已从 printedwaste 入库 AppID {appid}"}
-    raise HTTPException(status_code=500, detail="printedwaste 入库失败")
-
-@app.post("/api/install/zip/cysaw/{appid}")
-async def install_cysaw(appid: str):
-    print(f"[Install] cysaw ZIP入库: AppID={appid}")
-    result = await zip_processor.process_cysaw(appid)
-    if result:
-        return {"success": True, "message": f"已从 cysaw 入库 AppID {appid}"}
-    raise HTTPException(status_code=500, detail="cysaw 入库失败")
-
-@app.post("/api/install/zip/furcate/{appid}")
-async def install_furcate(appid: str):
-    print(f"[Install] furcate ZIP入库: AppID={appid}")
-    result = await zip_processor.process_furcate(appid)
-    if result:
-        return {"success": True, "message": f"已从 furcate 入库 AppID {appid}"}
-    raise HTTPException(status_code=500, detail="furcate 入库失败")
-
-@app.post("/api/install/zip/assiw/{appid}")
-async def install_assiw(appid: str):
-    print(f"[Install] assiw ZIP入库: AppID={appid}")
-    result = await zip_processor.process_assiw(appid)
-    if result:
-        return {"success": True, "message": f"已从 assiw 入库 AppID {appid}"}
-    raise HTTPException(status_code=500, detail="assiw 入库失败")
-
-@app.post("/api/install/zip/steamdatabase/{appid}")
-async def install_steamdatabase(appid: str):
-    print(f"[Install] steamdatabase ZIP入库: AppID={appid}")
-    result = await zip_processor.process_steamdatabase(appid)
-    if result:
-        return {"success": True, "message": f"已从 steamdatabase 入库 AppID {appid}"}
-    raise HTTPException(status_code=500, detail="steamdatabase 入库失败")

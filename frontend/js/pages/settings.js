@@ -1,4 +1,4 @@
-const SettingsPage = {
+window.SettingsPage = {
   container: null,
 
   init() {
@@ -30,7 +30,6 @@ const SettingsPage = {
     try {
       const repos = await API.Status.getRepos();
       this.renderCustomRepos(repos.custom || []);
-      this.renderZipRepos(repos.zip || []);
       Logger.info('SettingsPage', '仓库加载成功', repos);
     } catch (error) {
       Logger.error('SettingsPage', '加载仓库失败', error);
@@ -43,12 +42,9 @@ const SettingsPage = {
     try {
       const token = this.container.querySelector('#github-token').value;
       const path = this.container.querySelector('#steam-path-input').value;
-      const disableZip = this.container.querySelector('#disable-zip-repos').checked;
-
       await Promise.all([
         API.Config.saveGitHubToken(token),
-        API.Config.saveSteamPath(path),
-        API.Config.saveDisableZipRepos(disableZip)
+        API.Config.saveSteamPath(path)
       ]);
 
       Logger.info('SettingsPage', '设置保存成功');
@@ -74,10 +70,10 @@ const SettingsPage = {
       }
 
       await API.Repos.addGitHub(name, repo);
-      
+
       this.container.querySelector('#repo-name').value = '';
       this.container.querySelector('#repo-url').value = '';
-      
+
       Logger.info('SettingsPage', '仓库添加成功');
       UI.showToast('仓库添加成功', 'success');
 
@@ -107,50 +103,7 @@ const SettingsPage = {
     }
   },
 
-  async addZipRepo() {
-    Logger.info('SettingsPage', '添加ZIP仓库');
-    try {
-      const name = this.container.querySelector('#zip-repo-name').value.trim();
-      const url = this.container.querySelector('#zip-repo-url').value.trim();
 
-      if (!name || !url) {
-        UI.showToast('请填写名称和URL', 'warning');
-        return;
-      }
-
-      await API.Repos.addZip(name, url);
-      
-      this.container.querySelector('#zip-repo-name').value = '';
-      this.container.querySelector('#zip-repo-url').value = '';
-      
-      Logger.info('SettingsPage', 'ZIP仓库添加成功');
-      UI.showToast('ZIP仓库添加成功', 'success');
-
-      await this.loadRepos();
-    } catch (error) {
-      Logger.error('SettingsPage', '添加ZIP仓库失败', error);
-      UI.showToast('添加失败: ' + error.message, 'error');
-    }
-  },
-
-  async removeZipRepo(name) {
-    Logger.info('SettingsPage', '删除ZIP仓库', { name });
-
-    if (!confirm(`确定要删除ZIP仓库"${name}"吗？`)) {
-      Logger.info('SettingsPage', '用户取消删除ZIP仓库');
-      return;
-    }
-
-    try {
-      await API.Repos.removeZip(name);
-      Logger.info('SettingsPage', 'ZIP仓库删除成功');
-      UI.showToast('ZIP仓库已删除', 'success');
-      await this.loadRepos();
-    } catch (error) {
-      Logger.error('SettingsPage', '删除ZIP仓库失败', error);
-      UI.showToast('删除失败: ' + error.message, 'error');
-    }
-  },
 
   render() {
     Logger.debug('SettingsPage', '渲染设置页面');
@@ -183,22 +136,6 @@ const SettingsPage = {
         <div id="custom-repos"></div>
       </div>
 
-      <div class="settings-section">
-        <h2>ZIP清单库</h2>
-        <div class="form-group">
-          <label class="checkbox-item">
-            <input type="checkbox" id="disable-zip-repos">
-            <span>禁用所有ZIP仓库（内置 + 自定义）</span>
-          </label>
-        </div>
-        <div class="form-group">
-          <div class="input-group" style="flex-wrap:wrap;">
-            <input type="text" id="zip-repo-name" class="input" placeholder="显示名称" style="flex:1;min-width:120px;">
-            <input type="text" id="zip-repo-url" class="input" placeholder="ZIP文件URL" style="flex:1;min-width:120px;">
-            <button class="button" onclick="SettingsPage.addZipRepo()">添加</button>
-          </div>
-        </div>
-        <div id="zip-repos"></div>
       </div>
     `;
 
@@ -213,7 +150,6 @@ const SettingsPage = {
 
     if (tokenInput) tokenInput.value = config.Github_Personal_Token || '';
     if (pathInput) pathInput.value = config.Custom_Steam_Path || '';
-    if (disableZipInput) disableZipInput.checked = config.Disable_All_ZIP_Repos ?? true;
   },
 
   renderCustomRepos(repos) {
@@ -243,32 +179,7 @@ const SettingsPage = {
     container.appendChild(fragment);
   },
 
-  renderZipRepos(repos) {
-    Logger.debug('SettingsPage', '渲染ZIP仓库', { count: repos.length });
-    const container = this.container.querySelector('#zip-repos');
-    if (!container) return;
 
-    if (!repos || !repos.length) {
-      container.innerHTML = '<p style="color:var(--text-tertiary);font-size:12px;">暂无ZIP仓库</p>';
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-    repos.forEach(repo => {
-      const div = document.createElement('div');
-      div.className = 'repo-list-item';
-      div.innerHTML = `
-        <div class="info">
-          <span class="name">${Formatter.escapeHtml(repo.name)}</span>
-          <span class="url">${Formatter.escapeHtml(repo.url)}</span>
-        </div>
-        <button class="delete-btn" onclick="SettingsPage.removeZipRepo('${repo.name}')">删除</button>
-      `;
-      fragment.appendChild(div);
-    });
-    container.innerHTML = '';
-    container.appendChild(fragment);
-  },
 
   attachEventListeners() {
     Logger.debug('SettingsPage', '绑定事件监听器');

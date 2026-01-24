@@ -1,4 +1,4 @@
-const HelpPage = {
+window.HelpPage = {
   container: null,
   qaData: null,
 
@@ -95,7 +95,7 @@ const HelpPage = {
         question: key,
         answer: qaData[key]
       };
-      
+
       const div = document.createElement('div');
       div.className = 'help-item';
       div.innerHTML = `

@@ -10,29 +10,35 @@ Core Backend - 核心后端模块
 - 已入库文件管理
 
 依赖模块:
-- zip_manifest.py: ZIP 格式清单库处理
 - workshop_manifest.py: 创意工坊处理
 - buqiuren_manifest.py: 不求人仓库处理
+- buqiuren_manifest.py: 不求人仓库处理
+- services/: 重构后的服务模块
 """
 
-import json, asyncio, httpx, winreg, re, shutil
+import re
+import asyncio
+import logging
+import json
+import shutil
+import winreg
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
+from starlette.concurrency import run_in_threadpool
+from services import ConfigManager, NetworkService, SteamService
 
 MODULE_ID = "CoreBackend"
 
-CONFIG_PATH = Path("./config.json")
 GAMENAMES_CACHE_PATH = Path("./gamenames_cache.json")
-DEFAULT_CONFIG = {
-    "Github_Personal_Token": "",
-    "Custom_Steam_Path": "",
-    "Force_Unlocker": "",
-    "Disable_All_ZIP_Repos": True,
-    "Custom_Repos": {"github": [], "zip": []}
-}
 
 class CoreBackend:
     def __init__(self):
+        # 使用服务模块
+        self.config_manager = ConfigManager()
+        self.network = NetworkService()
+        self.steam = None  # 延迟初始化，需要 config 加载后
+        
+        # 状态变量
         self.config = {}
         self.steam_path = None
         self.unlocker_type = None
@@ -41,7 +47,6 @@ class CoreBackend:
         self.install_progress = {"current": 0, "total": 0, "status": "idle", "step": "", "message": "", "appid": None}
         self.search_cache = {}
         self.search_cache_ttl = 3600
-        self.client = httpx.AsyncClient(verify=False, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
         self.temp_path = Path("./temp")
         self.temp_path.mkdir(parents=True, exist_ok=True)
 
@@ -51,30 +56,22 @@ class CoreBackend:
         extra_str = f" | {extra}" if extra else ""
         print(f"[{timestamp}] [{MODULE_ID}] [{level}] {msg}{extra_str}")
 
-    async def close(self): await self.client.aclose()
+    async def close(self):
+        """关闭所有资源"""
+        await self.network.close()
 
     def load_config(self) -> Dict:
-        if not CONFIG_PATH.exists():
-            self.save_config(DEFAULT_CONFIG)
-            self.config = DEFAULT_CONFIG.copy()
-            return self.config
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                self.config = {**DEFAULT_CONFIG, **json.load(f)}
-                if "Custom_Repos" not in self.config:
-                    self.config["Custom_Repos"] = {"github": [], "zip": []}
-            return self.config
-        except Exception as e:
-            self._log("ERROR", f"加载配置失败: {e}")
-            self.config = DEFAULT_CONFIG.copy()
-            return self.config
+        """加载配置 - 委托给 ConfigManager"""
+        self.config = self.config_manager.load_sync()
+        # 初始化 SteamService（需要 config）
+        self.steam = SteamService(self.config_manager)
+        return self.config
 
     def save_config(self, config: Dict = None):
-        try:
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                json.dump(config or self.config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            self._log("ERROR", f"保存配置失败: {e}")
+        """保存配置 - 委托给 ConfigManager"""
+        if config:
+            self.config_manager.config = config
+        self.config_manager.save_sync()
 
     def load_game_names_cache(self):
         try:
@@ -166,22 +163,20 @@ class CoreBackend:
         return self.steam_path / "depotcache" if self.steam_path else None
 
     async def check_github_rate_limit(self) -> Dict:
+        """检查 GitHub API 速率限制 - 委托给 NetworkService"""
         token = self.config.get("Github_Personal_Token", "").strip()
-        headers = {'Authorization': f'Bearer {token}'} if token else {}
-        try:
-            resp = await self.client.get("https://api.github.com/rate_limit", headers=headers)
-            core = resp.json().get("resources", {}).get("core", {})
-            return {"remaining": core.get("remaining", 0), "limit": core.get("limit", 60)}
-        except: return {"remaining": 0}
+        return await self.network.check_github_rate_limit(token)
 
     async def check_network(self):
+        """检查网络连通性"""
         try:
-            resp = await self.client.get("https://mips.kugou.com/check/iscn?&format=json", timeout=5)
+            resp = await self.network.client.get("https://mips.kugou.com/check/iscn?&format=json", timeout=5)
             data = resp.json()
             return {"is_cn": bool(data.get("flag")), "country": data.get("country", "")}
         except: return {"is_cn": True}
 
     async def search_game_by_name(self, name: str) -> List[Dict]:
+        """搜索游戏名"""
         cache_key = name.lower().strip()
         if cache_key in self.search_cache:
             cached = self.search_cache[cache_key]
@@ -190,7 +185,7 @@ class CoreBackend:
                 return cached["results"]
         results = []
         try:
-            resp = await self.client.get(f"https://store.steampowered.com/api/storesearch?l=schinese&cc=cn&term={name}")
+            resp = await self.network.client.get(f"https://store.steampowered.com/api/storesearch?l=schinese&cc=cn&term={name}")
             data = resp.json()
             if data.get("total"):
                 for item in data.get("items", [])[:10]:
@@ -203,8 +198,9 @@ class CoreBackend:
         return results
 
     async def get_game_details(self, appid: str) -> Optional[Dict]:
+        """获取游戏详情"""
         try:
-            resp = await self.client.get(f"https://store.steampowered.com/api/appdetails?appids={appid}&l=schinese")
+            resp = await self.network.client.get(f"https://store.steampowered.com/api/appdetails?appids={appid}&l=schinese")
             data = resp.json()
             if appid in data and data[appid].get("success"):
                 return data[appid].get("data", {})
@@ -212,16 +208,17 @@ class CoreBackend:
         return None
 
     async def get_github_manifest(self, appid: str, repo: str) -> Optional[Dict]:
+        """获取 GitHub 清单"""
         token = self.config.get("Github_Personal_Token", "").strip()
         headers = {'Authorization': f'Bearer {token}'} if token else {}
         try:
             url = f"https://api.github.com/repos/{repo}/branches/{appid}"
-            resp = await self.client.get(url, headers=headers)
+            resp = await self.network.client.get(url, headers=headers)
             if resp.status_code not in [200, 404]: return None
             data = resp.json()
             if "commit" in data:
                 tree_url = data["commit"]["commit"]["tree"]["url"]
-                tree_resp = await self.client.get(tree_url, headers=headers)
+                tree_resp = await self.network.client.get(tree_url, headers=headers)
                 tree_data = tree_resp.json()
                 if "tree" in tree_data:
                     return {"sha": data["commit"]["sha"], "files": tree_data["tree"], "update_date": data["commit"]["commit"]["author"]["date"]}
@@ -272,7 +269,7 @@ class CoreBackend:
     async def cleanup_temp(self):
         try:
             if self.temp_path.exists():
-                shutil.rmtree(self.temp_path)
+                await run_in_threadpool(shutil.rmtree, self.temp_path)
                 self.temp_path.mkdir(parents=True, exist_ok=True)
             self._log("INFO", "临时目录已清理")
         except Exception as e:

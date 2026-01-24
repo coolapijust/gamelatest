@@ -331,3 +331,51 @@
     display: none;
   }
 }
+
+/* Window Controls */
+.window-controls {
+  display: flex;
+  align-items: center;
+  margin-left: var(--spacing-md);
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-radius: var(--radius-sm);
+}
+
+.win-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.win-btn.close:hover {
+  background: #e81123;
+  color: white;
+}
+
+/* Drag Region */
+.pywebview-drag-region {
+  -webkit-app-region: drag;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+/* Ensure interactive elements are not draggable */
+.nav-brand, .nav-item, .nav-action, .theme-toggle, .window-controls button {
+  -webkit-app-region: no-drag;
+}
+

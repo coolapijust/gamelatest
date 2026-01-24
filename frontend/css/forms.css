@@ -55,7 +55,7 @@
   border: 2px solid var(--border-color);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-normal);
   background: var(--bg-secondary);
@@ -64,14 +64,16 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-sm);
-  min-height: 40px;
+  min-height: 42px;
+  position: relative;
+  overflow: hidden;
 }
 
 .button:hover {
   background: var(--bg-tertiary);
-  border-color: var(--border-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .button:active {
@@ -80,20 +82,20 @@
 }
 
 .button.primary {
-  background: var(--primary-color);
+  background: var(--primary-gradient);
   color: white;
-  border-color: var(--primary-color);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
 }
 
 .button.primary:hover {
-  background: var(--primary-hover);
-  border-color: var(--primary-hover);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), var(--primary-glow);
 }
 
 .button.primary:active {
-  background: var(--primary-active);
-  border-color: var(--primary-active);
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 
 .checkbox-label {

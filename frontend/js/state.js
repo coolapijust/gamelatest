@@ -1,4 +1,4 @@
-const State = {
+window.State = {
   currentTab: 'home',
   files: [],
   repos: {
@@ -32,7 +32,7 @@ const State = {
   },
 
   setRepos(repos) {
-    Logger.info('State', '更新仓库列表', { 
+    Logger.info('State', '更新仓库列表', {
       builtin: repos.builtin?.length || 0,
       custom: repos.custom?.length || 0,
       zip: repos.zip?.length || 0
@@ -166,12 +166,12 @@ const State = {
       if (saved) {
         const state = JSON.parse(saved);
         Logger.info('State', '加载保存的状态', state);
-        
+
         if (state.currentTab) this.currentTab = state.currentTab;
         if (state.theme) this.theme = state.theme;
         if (state.selectedGame) this.selectedGame = state.selectedGame;
         if (state.selectedRepo) this.selectedRepo = state.selectedRepo;
-        
+
         this.loadGameNamesCache();
         return true;
       }

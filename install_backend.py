@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import httpx
 from datetime import datetime
+from functools import partial
+from starlette.concurrency import run_in_threadpool
 
 MODULE_ID = "InstallBackend"
 
@@ -14,10 +16,10 @@ def _log(level: str, msg: str, extra: Dict = None):
 class InstallBackend:
     def __init__(self, core):
         self.core = core
-        self.client = httpx.AsyncClient(verify=False, timeout=60)
+        # self.client will be accessed via self.core.network.client
         self.cancel_requested = False
 
-    async def close(self): await self.client.aclose()
+    async def close(self): pass # Network shared, closed by core
 
     def request_cancel(self):
         self.cancel_requested = True
@@ -56,81 +58,44 @@ class InstallBackend:
         return results
 
     async def search_all_repos_for_appid(self, appid: str) -> List[Dict]:
-        """自动搜索所有仓库（GitHub + ZIP），作为默认选项
-        
-        搜索范围:
-        - GitHub 仓库 (内置 + 自定义)
-        - ZIP 格式仓库 (printedwaste, cysaw, furcate, assiw, steamdatabase)
-        
-        不包含:
-        - 创意工坊（需要工坊 URL/ID，非 AppID）
-        - ZIP 仓库（当 "禁用所有ZIP仓库" 选项开启时）
-        """
         _log("INFO", f"开始自动搜索仓库", {"appid": appid})
         self._update_progress(0, 0, "search", f"正在自动搜索: {appid}", appid)
         results = []
-        found_count = {"github": 0, "zip": 0}
+        found_count = {"github": 0}
         
-        disable_zip = self.core.config.get("Disable_All_ZIP_Repos", True)
-        _log("INFO", f"ZIP仓库禁用状态", {"disable_all_zip": disable_zip})
-        
-        zip_repos = {
-            "printedwaste": "https://api.printedwaste.com/gfk/download/{appid}",
-            "cysaw": "https://cysaw.top/uploads/{appid}.zip",
-            "furcate": "https://furcate.eu/files/{appid}.zip",
-            "assiw": "https://assiw.cngames.site/qindan/{appid}.zip",
-            "steamdatabase": "https://steamdatabase.s3.eu-north-1.amazonaws.com/{appid}.zip",
-        }
-        
+        # 1. Prepare GitHub tasks
         github_repos = self.core.get_all_repos()
-        
+        current_search_count = 0
         total_github = len(github_repos)
-        total_zip = 0 if disable_zip else len(zip_repos)
-        total = total_github + total_zip
         
-        _log("INFO", f"仓库列表加载完成", {"github_count": total_github, "zip_count": total_zip, "appid": appid})
+        async def search_github_single(repo_name):
+             # Use nonlocal carefully or just pass state. Here we just return result.
+             nonlocal current_search_count
+             if self.check_cancel(): return None
+             current_search_count += 1
+             # UI progress update might be too frequent if concurrent, but we'll try for now or debounce in UI
+             # self._update_progress(current_search_count, total_github, "search", ...) 
+             # For simpler logic, we log here
+             # _log("DEBUG", f"Searching {repo_name}...")
+             manifest = await self._get_github_manifest(appid, repo_name)
+             if manifest:
+                 return {"repo": repo_name, "type": "github", **manifest}
+             return None
+
+        github_tasks = [partial(search_github_single, repo) for repo in github_repos]
         
-        for i, repo in enumerate(github_repos):
-            self._update_progress(i + 1, total, "search", f"搜索 GitHub [{i+1}/{total_github}]: {repo}", appid)
-            _log("DEBUG", f"搜索 GitHub 仓库", {"current": i+1, "total": total_github, "repo": repo, "appid": appid})
-            manifest = await self._get_github_manifest(appid, repo)
-            if manifest:
-                results.append({"repo": repo, "type": "github", **manifest})
+        # 2. Execute GitHub search
+        gh_results = await self.core.network.download_concurrently(github_tasks, concurrency=5)
+        for res in gh_results:
+            if res:
+                results.append(res)
                 found_count["github"] += 1
-                _log("INFO", f"找到 GitHub 仓库", {"repo": repo, "sha": manifest.get("sha", "")[:7], "appid": appid})
-        
-        if disable_zip:
-            _log("INFO", f"ZIP仓库已禁用，跳过搜索")
-        else:
-            zip_start_idx = total_github
-            for i, (name, url_template) in enumerate(zip_repos.items()):
-                idx = zip_start_idx + i + 1
-                url = url_template.format(appid=appid)
-                self._update_progress(idx, total, "search", f"搜索 ZIP [{i+1}/{total_zip}]: {name}", appid)
-                _log("DEBUG", f"检查 ZIP 仓库", {"current": i+1, "total": total_zip, "name": name, "url": url, "appid": appid})
-            
-            try:
-                resp = await self.client.head(url, timeout=15)
-                if resp.status_code == 200:
-                    results.append({
-                        "repo": f"zip:{name}",
-                        "zip_url": url,
-                        "source": name,
-                        "type": "zip",
-                        "update_date": None
-                    })
-                    found_count["zip"] += 1
-                    _log("INFO", f"找到 ZIP 仓库", {"name": name, "appid": appid})
-                else:
-                    _log("DEBUG", f"ZIP 仓库不存在", {"name": name, "status": resp.status_code, "appid": appid})
-            except Exception as e:
-                _log("WARNING", f"ZIP 仓库检查失败", {"name": name, "error": str(e), "appid": appid})
-        
+
         _log("INFO", f"自动搜索完成", {"total_found": len(results), **found_count, "appid": appid})
         
         self.core.install_progress = {
-            "current": total,
-            "total": total,
+            "current": 100,
+            "total": 100,
             "status": "completed",
             "step": "search",
             "message": f"搜索完成，找到 {len(results)} 个仓库",
@@ -144,15 +109,34 @@ class InstallBackend:
         headers = {'Authorization': f'Bearer {token}'} if token else {}
         try:
             url = f"https://api.github.com/repos/{repo}/branches/{appid}"
-            resp = await self.client.get(url, headers=headers)
-            if resp.status_code != 200: return None
+            resp = await self.core.network.get(url, headers=headers)
+            
+            if resp.status_code == 404:
+                # Not found is normal
+                return None
+            
+            if resp.status_code != 200:
+                print(f"[Install] 搜索异常 {repo}: HTTP {resp.status_code}")
+                # Check for rate limit
+                if resp.status_code == 403:
+                    print(f"[Install] 可能触发 GitHub API 速率限制")
+                return None
+                
             data = resp.json()
             if "commit" not in data: return None
             tree_url = data["commit"]["commit"]["tree"]["url"]
-            tree_data = (await self.client.get(tree_url, headers=headers)).json()
+            tree_resp = await self.core.network.get(tree_url, headers=headers)
+            
+            if tree_resp.status_code != 200:
+                print(f"[Install] 获取 Tree 失败 {repo}: HTTP {tree_resp.status_code}")
+                return None
+                
+            tree_data = tree_resp.json()
             if "tree" not in tree_data: return None
             return {"sha": data["commit"]["sha"], "files": tree_data["tree"], "update_date": data["commit"]["commit"]["author"]["date"]}
-        except: return None
+        except Exception as e: 
+            print(f"[Install] 搜索出错 {repo}: {e}")
+            return None
 
     async def download_from_github(self, appid: str, repo: str, sha: str, files: List[Dict], add_all_dlc: bool = False, fix_workshop: bool = False) -> Dict:
         print(f"[Install] 开始下载: AppID={appid}, Repo={repo}, SHA={sha[:7]}...")
@@ -163,24 +147,38 @@ class InstallBackend:
             headers = {'Authorization': f'Bearer {token}'} if token else {}
             downloaded = {}
             total = len(files)
+            completed_count = 0
             
-            for i, f in enumerate(files):
-                self._update_progress(i + 1, total, "download", f"下载文件 {i+1}/{total}: {f['path'][:50]}...", appid)
-                url = f"https://raw.githubusercontent.com/{repo}/{sha}/{f['path']}"
+            async def download_single(file_info):
+                nonlocal completed_count
+                if self.check_cancel(): return None
+                
+                path = file_info['path']
+                url = f"https://raw.githubusercontent.com/{repo}/{sha}/{path}"
                 try:
-                    resp = await self.client.get(url, headers=headers, timeout=30)
-                    if resp.status_code == 200:
-                        downloaded[f['path']] = resp.content
-                        print(f"[Install] 下载成功: {f['path']}")
+                    resp = await self.core.network.get_with_retry(url, headers=headers, timeout=30)
+                    if resp and resp.status_code == 200:
+                        completed_count += 1
+                        self._update_progress(completed_count, total, "download", f"下载文件 {completed_count}/{total}", appid)
+                        return (path, resp.content)
                     else:
-                        print(f"[Install] 下载失败: {f['path']} (HTTP {resp.status_code})")
-                except httpx.ConnectError as e:
-                    print(f"[Install] 下载连接失败: {f['path']} - {e}")
-                except httpx.TimeoutException as e:
-                    print(f"[Install] 下载超时: {f['path']} - {e}")
+                        print(f"[Install] 下载失败: {path} (HTTP {resp.status_code if resp else 'Error'})")
+                        return None
                 except Exception as e:
-                    print(f"[Install] 下载异常: {f['path']} - {type(e).__name__}: {e}")
+                    print(f"[Install] 下载异常: {path} - {e}")
+                    return None
+
+            tasks = [partial(download_single, f) for f in files]
+            # Limit concurrency to 5 to avoid rate limits
+            results = await self.core.network.download_concurrently(tasks, concurrency=5)
             
+            for res in results:
+                if res:
+                    downloaded[res[0]] = res[1]
+            
+            if self.check_cancel():
+                return {"success": False, "message": "用户取消操作"}
+
             if not downloaded:
                 print(f"[Install] 下载失败: 未找到可下载的文件")
                 return {"success": False, "message": "未找到可下载的文件"}
@@ -312,55 +310,4 @@ class InstallBackend:
             print(f"[Install] Workshop 异常: {e}")
             return {"success": False}
 
-    async def download_zip_manifest(self, appid: str, url: str, add_all_dlc: bool = False, fix_workshop: bool = False) -> Dict:
-        print(f"[Install] 开始下载 ZIP: AppID={appid}, URL={url[:50]}...")
-        self._update_progress(0, 0, "download", "正在下载 ZIP 文件", appid)
-        try:
-            self._update_progress(0, 0, "download", "正在下载 ZIP 文件", appid)
-            resp = await self.client.get(url, timeout=60)
-            if resp.status_code != 200: 
-                print(f"[Install] ZIP 下载失败: HTTP {resp.status_code}")
-                return {"success": False, "message": f"下载失败: {resp.status_code}"}
-            zip_path, extract_path = self.core.temp_path / f"{appid}.zip", self.core.temp_path / appid
-            zip_path.write_bytes(resp.content)
-            print(f"[Install] ZIP 下载完成: {len(resp.content)/1024:.1f} KB")
-            
-            self._update_progress(0, 0, "extract", "正在解压文件", appid)
-            print(f"[Install] 开始解压...")
-            with zipfile.ZipFile(zip_path, 'r') as z: z.extractall(extract_path)
-            print(f"[Install] 解压完成")
-            
-            downloaded = {f.name: f.read_bytes() for f in extract_path.rglob('*') if f.is_file()}
-            print(f"[Install] 找到 {len(downloaded)} 个文件")
-            
-            self._update_progress(0, 0, "process", f"正在处理 {len(downloaded)} 个文件", appid)
-            result = await self._process_downloaded_files(appid, downloaded, add_all_dlc, fix_workshop)
-            
-            zip_path.unlink(missing_ok=True)
-            if extract_path.exists(): shutil.rmtree(extract_path)
-            print(f"[Install] ZIP 入库完成: {result}")
-            return {"success": True, "message": result}
-        except Exception as e:
-            print(f"[Install] ZIP 异常: {e}")
-            return {"success": False, "message": str(e)}
-            result = await self._process_downloaded_files(appid, downloaded, add_all_dlc, fix_workshop)
-            zip_path.unlink(missing_ok=True)
-            if extract_path.exists(): shutil.rmtree(extract_path)
-            return {"success": True, "message": result}
-        except Exception as e: return {"success": False, "message": str(e)}
 
-    def get_zip_repos(self) -> List[Dict]: return self.core.config.get("Custom_Repos", {}).get("zip", [])
-    def add_zip_repo(self, name: str, url: str) -> bool:
-        try:
-            repos = self.core.config.setdefault("Custom_Repos", {"github": [], "zip": []})
-            repos["zip"].append({"name": name, "url": url})
-            self.core.save_config()
-            return True
-        except: return False
-    def remove_zip_repo(self, name: str) -> bool:
-        try:
-            repos = self.core.config.get("Custom_Repos", {})
-            repos["zip"] = [r for r in repos.get("zip", []) if r.get("name") != name]
-            self.core.save_config()
-            return True
-        except: return False

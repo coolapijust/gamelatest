@@ -1,4 +1,4 @@
-const HomePage = {
+window.HomePage = {
   container: null,
   statusData: null,
 
@@ -16,10 +16,13 @@ const HomePage = {
   async loadStatus() {
     Logger.info('HomePage', '加载状态数据');
     try {
-      const status = await API.Status.get();
-      this.statusData = status;
-      this.updateStatusDisplay(status);
-      Logger.info('HomePage', '状态数据加载成功', status);
+      const [status, files] = await Promise.all([
+        API.Status.get(),
+        API.Status.getFiles()
+      ]);
+      this.statusData = { ...status, files: files.files || [] };
+      this.updateStatusDisplay(this.statusData);
+      Logger.info('HomePage', '状态数据加载成功', this.statusData);
     } catch (error) {
       Logger.error('HomePage', '加载状态失败', error);
       UI.showToast('加载状态失败: ' + error.message, 'error');
@@ -28,7 +31,7 @@ const HomePage = {
 
   updateStatusDisplay(status) {
     Logger.debug('HomePage', '更新状态显示', status);
-    
+
     const steamPath = this.container.querySelector('#steam-path');
     const unlockerType = this.container.querySelector('#unlocker-type');
     const installedCount = this.container.querySelector('#installed-count');
@@ -36,7 +39,7 @@ const HomePage = {
     if (steamPath) {
       steamPath.textContent = status.steam_path || '未检测到';
     }
-    
+
     if (unlockerType) {
       const unlockerNames = {
         'steamtools': 'SteamTools',
@@ -44,9 +47,9 @@ const HomePage = {
       };
       unlockerType.textContent = unlockerNames[status.unlocker_type] || status.unlocker_type || '未检测';
     }
-    
+
     if (installedCount) {
-      installedCount.textContent = status.config?.files?.length || 0;
+      installedCount.textContent = status.files?.length || 0;
     }
   },
 
@@ -97,7 +100,7 @@ const HomePage = {
 
   attachEventListeners() {
     Logger.debug('HomePage', '绑定事件监听器');
-    
+
     this.container.querySelectorAll('.action-btn').forEach(btn => {
       btn.onclick = () => {
         const route = btn.dataset.route;

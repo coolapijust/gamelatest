@@ -1,8 +1,9 @@
-const Navigation = {
+window.Navigation = {
   menuItems: [
     { id: 'home', label: '首页', icon: '🏠', route: 'home' },
     { id: 'install', label: '游戏入库', icon: '🎮', route: 'install' },
     { id: 'files', label: '文件管理', icon: '📁', route: 'files' },
+    { id: 'settings', label: '设置', icon: '⚙️', route: 'settings' },
     { id: 'help', label: '帮助', icon: '❓', route: 'help' }
   ],
 
@@ -24,7 +25,7 @@ const Navigation = {
 
   buildNavigationHTML() {
     let html = `
-      <div class="nav-left">
+      <div class="nav-left pywebview-drag-region">
         <a href="#home" class="nav-brand" onclick="event.preventDefault();Router.navigate('home')">
           <div class="nav-logo">🎮</div>
           <div class="nav-brand-text">
@@ -35,9 +36,9 @@ const Navigation = {
         <div class="nav-divider"></div>
       </div>
 
-      <div class="nav-center">
+      <div class="nav-center pywebview-drag-region">
     `;
-    
+
     this.menuItems.forEach(item => {
       html += this.buildMenuItemHTML(item);
     });
@@ -49,9 +50,14 @@ const Navigation = {
         <div id="api-status" class="api-status">
           API已连接
         </div>
-        <button class="theme-toggle" onclick="State.toggleTheme()" aria-label="切换主题" title="切换主题">
-          🌓
+        <button id="theme-toggle" class="theme-toggle" onclick="Navigation.handleThemeToggle()" aria-label="切换主题" title="切换主题">
+          ${State.theme === 'dark' ? '🌙' : '☀️'}
         </button>
+        <div class="window-controls">
+           <button class="win-btn minimize" onclick="Navigation.minimize()" title="最小化">─</button>
+           <button class="win-btn maximize" onclick="Navigation.toggleMaximize()" title="最大化">◻</button>
+           <button class="win-btn close" onclick="Navigation.close()" title="关闭">✕</button>
+        </div>
       </div>
     `;
     return html;
@@ -59,7 +65,7 @@ const Navigation = {
 
   buildMenuItemHTML(item) {
     const isActive = this.activeItem === item.id;
-    
+
     return `
       <div class="nav-item ${isActive ? 'active' : ''}" 
            data-route="${item.route}" 
@@ -75,7 +81,7 @@ const Navigation = {
 
   attachEventListeners() {
     Logger.debug('Navigation', '绑定事件监听器');
-    
+
     $$('.nav-item').forEach(item => {
       item.onclick = (event) => {
         event.stopPropagation();
@@ -87,9 +93,9 @@ const Navigation = {
   handleItemClick(item) {
     const route = item.dataset.route;
     const id = item.dataset.id;
-    
+
     Logger.info('Navigation', '菜单项点击', { id, route });
-    
+
     if (route) {
       this.setActiveItem(id);
       Router.navigate(route);
@@ -98,9 +104,9 @@ const Navigation = {
 
   setActiveItem(itemId) {
     Logger.debug('Navigation', '设置激活项', { itemId });
-    
+
     this.activeItem = itemId;
-    
+
     $$('.nav-item').forEach(item => {
       const isActive = item.dataset.id === itemId;
       item.classList.toggle('active', isActive);
@@ -125,5 +131,35 @@ const Navigation = {
     Logger.info('Navigation', '初始化导航系统');
     this.render();
     this.setActiveItem('home');
+  },
+
+  minimize() {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.minimize().catch(err => console.error(err));
+    }
+  },
+
+  toggleMaximize() {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.toggle_maximize().catch(err => console.error(err));
+    }
+  },
+
+  close() {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.close().catch(err => console.error(err));
+    }
+  },
+
+  handleThemeToggle() {
+    const newTheme = State.toggleTheme();
+    this.updateThemeIcon(newTheme);
+  },
+
+  updateThemeIcon(theme) {
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+      btn.innerHTML = theme === 'dark' ? '🌙' : '☀️';
+    }
   }
 };
