@@ -1,6 +1,9 @@
 name: 部署展示网站
 
 on:
+  push:
+    branches:
+      - website
   workflow_dispatch:
 
 permissions:
